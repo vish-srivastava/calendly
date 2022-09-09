@@ -28,10 +28,14 @@ dependencies {
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+	// https://mvnrepository.com/artifact/com.datastax.astra/astra-spring-boot-starter
+	implementation("com.datastax.astra:astra-spring-boot-starter:0.3.3")
 	compileOnly("org.projectlombok:lombok")
-	runtimeOnly("com.h2database:h2")
 	annotationProcessor("org.projectlombok:lombok")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
+    // https://mvnrepository.com/artifact/com.datastax.astra/astra-spring-boot-starter
+//    implementation group: 'com.datastax.astra', name: 'astra-spring-boot-starter', version: '0.3.3'
+
 }
 
 tasks.withType<KotlinCompile> {
