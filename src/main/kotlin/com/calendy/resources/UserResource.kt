@@ -1,9 +1,6 @@
 package com.calendy.resources
 
-import com.calendy.models.CalenderEvent
-import com.calendy.models.CalenderEventRequest
-import com.calendy.models.CreateUserRequest
-import com.calendy.models.User
+import com.calendy.models.*
 import com.calendy.services.UserService
 import org.jetbrains.annotations.NotNull
 import org.springframework.beans.factory.annotation.Autowired
@@ -12,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import java.util.*
 import javax.websocket.server.PathParam
 
 @RestController
@@ -30,7 +28,7 @@ class UserResource {
     }
 
     @GetMapping("/getAllUsers")
-    fun getAllUSers(): List<User> {
+    fun getAllUsers(): List<User> {
         return userService.getAllUsers()
     }
 
@@ -46,11 +44,12 @@ class UserResource {
     @GetMapping("/getUserAvailability")
     fun getUserAvailability(
         @RequestParam userId: String,
-        @RequestParam startDate: Long,
-        @RequestParam endDate: Long,
+        @RequestParam startofDay: Date,
         @RequestParam eventId: String
-    ): String {
-        return "Hello"
+    ): UserAvailabilityResponse? {
+        return userService.getUserAvailability(
+            userId, startofDay, eventId
+        )
     }
 
     /**
@@ -67,8 +66,13 @@ class UserResource {
         return userService.createUserEvent(request)
     }
 
+    @PostMapping("requestSlotBooking")
+    fun requestSlotBooking(@RequestBody request: SlotBookingRequest): String {
+        return userService.bookSlot(request)
+    }
 
-    /** 
+
+    /** TODO: Implement
      * Update a created event :
      * Set availability
      * Redefine Slot Windows

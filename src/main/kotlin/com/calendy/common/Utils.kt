@@ -1,8 +1,6 @@
 package com.calendy.common
 
-import com.calendy.models.CalenderEvent
-import com.calendy.models.CalenderEventRequest
-import com.calendy.models.CreateUserRequest
+import com.calendy.models.*
 import java.util.UUID
 
 
@@ -32,7 +30,6 @@ inline fun CalenderEventRequest.toCalenderEvent(): CalenderEvent {
         isActive = isActive,
         paymentRequired = paymentRequired,
         hostUserId = hostUserId,
-        eventDetails = eventDetails,
         slotWindowType = slotWindowType,
         slotMaxDurationMinutes = slotDurationMinutes,
         dailyStartTimeMins = dailyStartTimeMins,
@@ -40,4 +37,23 @@ inline fun CalenderEventRequest.toCalenderEvent(): CalenderEvent {
         eventStartDate = eventStartDate,
         eventEndDate = eventEndDate
     )
+}
+
+inline fun SlotBookingRequest.toSlot(): Slot {
+    return Slot(
+        eventId = eventId,
+        slotId = "SLOT-" + UUID.randomUUID(),
+        inviteeUserId = inviteeUserId,
+        startTime = startTime,
+        endTime = endTime,
+        eventMetadata = eventMetadata
+
+    )
+}
+
+inline fun Int.toMinutesString(): String {
+    val totalMinutes = 24 * 60;
+    val hours = this / 60
+    val minutes = this % 60
+    return "$hours hr $minutes"
 }

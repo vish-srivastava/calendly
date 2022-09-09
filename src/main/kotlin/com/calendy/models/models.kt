@@ -111,11 +111,12 @@ enum class CalenderEventType {
     CONSULTATION, INTERVIEW, MEETING
 }
 
-
+@JsonAutoDetect
 enum class SlotWindowType {
     ROLLING, FIXED_WINDOW
 }
 
+@JsonAutoDetect
 enum class ThirdPartyCalenderType {
     GOOGLE_CALENDAR,
     MICROSOFT_OUTLOOK,
@@ -123,6 +124,7 @@ enum class ThirdPartyCalenderType {
     ZOOM_CALENDAR
 }
 
+@JsonAutoDetect
 data class Message(
     val messageBody: String,
     val messageHeader: String? = "",
@@ -130,6 +132,19 @@ data class Message(
     val hideRecipients: Boolean = true
 )
 
+@JsonAutoDetect
 enum class NotificationType {
     SMS, EMAIL, PUSH_NOTIFICATION, CALL
 }
+
+@JsonAutoDetect
+data class UserAvailabilityResponse(
+    val userId: String,
+    val eventId: String,
+    val startDate: Date? = null,
+    val endDate: Date? = null,
+    val totalAvailableSlots: Int? = null,
+    val availabilityMap: Map<String, String> = emptyMap(),
+    val unavailabilityMap: Map<String, String> = emptyMap(),
+    val errorMessage: String? = null
+)
