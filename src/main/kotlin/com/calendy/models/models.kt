@@ -1,6 +1,7 @@
 package com.calendy.models
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect
+import org.springframework.data.cassandra.core.mapping.Indexed
 import org.springframework.data.cassandra.core.mapping.PrimaryKey
 import org.springframework.data.cassandra.core.mapping.Table
 import java.util.*
@@ -14,6 +15,7 @@ data class CreateUserRequest(
     val accountsToLink: Map<ThirdPartyCalenderType, String>
 )
 
+@JsonAutoDetect
 @Table("user")
 data class User(
     @PrimaryKey
@@ -25,18 +27,38 @@ data class User(
 )
 
 
+@JsonAutoDetect
 data class UserMetadata(
     val metadata: Map<String, String>
 )
 
-data class CalenderEvent(
-    val eventId: String,
-    val isActive: Boolean,
+@JsonAutoDetect
+data class CalenderEventRequest(
     val paymentRequired: Boolean,
+    val eventName: String? = null,
+    val isActive: Boolean = true,
     val hostUserId: String,
     val eventDetails: EventMetadata,
     val slotWindowType: SlotWindowType,
     val slotDurationMinutes: Int,
+    val dailyStartTimeMins: Int,
+    val dailyEndTimeMins: Int,
+    val eventStartDate: Date? = null,
+    val eventEndDate: Date? = null,
+    val timeZone: String? = null
+)
+
+@JsonAutoDetect
+@Table("event")
+data class CalenderEvent(
+    @PrimaryKey
+    val hostUserId: String,
+    @Indexed
+    val eventId: String,
+    val isActive: Boolean,
+    val paymentRequired: Boolean,
+    val slotWindowType: SlotWindowType,
+    val slotMaxDurationMinutes: Int,
     val dailyStartTimeMins: Int,
     val dailyEndTimeMins: Int,
     val eventStartDate: Date?,
@@ -44,24 +66,37 @@ data class CalenderEvent(
     val timeZone: String? = null
 )
 
+@JsonAutoDetect
 data class SlotBookingRequest(
     val eventId: String,
-    val requestedSlot: Slot
-)
-
-data class Slot(
     val inviteeUserId: String,
-    val slotId: String,
     val startTime: Date,
-    val endTime: Date
+    val endTime: Date,
+    val eventMetadata: EventMetadata,
+    val paymentMetadata: Map<String, String> = mapOf()
 )
 
+@JsonAutoDetect
+@Table("slot")
+data class Slot(
+    @PrimaryKey
+    val eventId: String,
+    @Indexed
+    val slotId: String,
+    val inviteeUserId: String,
+    val startTime: Date,
+    val endTime: Date,
+    val eventMetadata: EventMetadata
+)
+
+@JsonAutoDetect
 data class EventMetadata(
     val eventLocation: EventLocation,
     val eventLocationUrl: String,
     val guestEmails: List<String>
 )
 
+@JsonAutoDetect
 enum class EventLocation {
     ZOOM,
     GOOGLE_MEET,
@@ -71,6 +106,7 @@ enum class EventLocation {
 }
 
 
+@JsonAutoDetect
 enum class CalenderEventType {
     CONSULTATION, INTERVIEW, MEETING
 }
@@ -83,14 +119,15 @@ enum class SlotWindowType {
 enum class ThirdPartyCalenderType {
     GOOGLE_CALENDAR,
     MICROSOFT_OUTLOOK,
-    APPLE_CALENDAR
+    APPLE_CALENDAR,
+    ZOOM_CALENDAR
 }
 
 data class Message(
     val messageBody: String,
     val messageHeader: String? = "",
     val isImportant: Boolean = false,
-    val hideRecepients: Boolean = true
+    val hideRecipients: Boolean = true
 )
 
 enum class NotificationType {
