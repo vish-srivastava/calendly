@@ -1,21 +1,29 @@
 package com.calendy.models
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect
+import org.springframework.data.cassandra.core.mapping.PrimaryKey
+import org.springframework.data.cassandra.core.mapping.Table
 import java.util.*
 
+
+@JsonAutoDetect
 data class CreateUserRequest(
     val name: String,
-    val emails: List<String>,
+    val email: String,
     val phone: String,
     val accountsToLink: Map<ThirdPartyCalenderType, String>
 )
 
+@Table("user")
 data class User(
+    @PrimaryKey
     val userId: String,
     val name: String,
-    val emails: List<String>,
+    val email: String,
     val phone: String,
     val linkedThirdPartyCalenders: Map<ThirdPartyCalenderType, String>
 )
+
 
 data class UserMetadata(
     val metadata: Map<String, String>
@@ -76,4 +84,15 @@ enum class ThirdPartyCalenderType {
     GOOGLE_CALENDAR,
     MICROSOFT_OUTLOOK,
     APPLE_CALENDAR
+}
+
+data class Message(
+    val messageBody: String,
+    val messageHeader: String? = "",
+    val isImportant: Boolean = false,
+    val hideRecepients: Boolean = true
+)
+
+enum class NotificationType {
+    SMS, EMAIL, PUSH_NOTIFICATION, CALL
 }

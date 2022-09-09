@@ -1,12 +1,13 @@
 package com.calendy.daos
 
-import org.springframework.beans.factory.annotation.Autowired
+import com.calendy.models.User
+import org.springframework.data.cassandra.repository.CassandraRepository
+import org.springframework.data.cassandra.repository.Query
 import org.springframework.stereotype.Repository
 
 
 @Repository
-class UserRepository  {
-//
-//    @Autowired
-//    val astraClient: AstraClient
+interface UserRepository : CassandraRepository<User, String> {
+    fun findByuserId(userId: String): MutableList<User>
+
 }
