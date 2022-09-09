@@ -67,7 +67,7 @@ class UserResource {
     }
 
     @PostMapping("requestSlotBooking")
-    fun requestSlotBooking(@RequestBody request: SlotBookingRequest): String {
+    fun requestSlotBooking(@RequestBody request: SlotBookingRequest): String? {
         return userService.bookSlot(request)
     }
 
