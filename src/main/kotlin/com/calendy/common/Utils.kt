@@ -6,11 +6,11 @@ import java.util.UUID
 
 inline fun CreateUserRequest.validateUserCreationRequest() {
     // some validations based on email
-    val existingUsersForSameEmail = listOf("vishal.srivastava@gmail.com")
-//        userRepository.findByUserEmails(listOf(this.email))
-    if (existingUsersForSameEmail.isNotEmpty()) {
-        throw Exception("User email already exists")
-    }
+//    val existingUsersForSameEmail = listOf("vishal.srivastava@gmail.com")
+////        userRepository.findByUserEmails(listOf(this.email))
+//    if (existingUsersForSameEmail.isNotEmpty()) {
+//        throw Exception("User email already exists")
+//    }
 }
 
 inline fun CalenderEventRequest.validate() {
@@ -39,14 +39,18 @@ inline fun CalenderEventRequest.toCalenderEvent(): CalenderEvent {
     )
 }
 
-inline fun SlotBookingRequest.toSlot(): Slot {
+inline fun SlotBookingRequest.toSlot(eventMetadata: EventMetadata? = null): Slot {
     return Slot(
         eventId = eventId,
         slotId = "SLOT-" + UUID.randomUUID(),
         inviteeUserId = inviteeUserId,
         startTime = startTime,
         endTime = endTime,
-        eventMetadata = eventMetadata
+        eventMetadata = mapOf<String, String>(
+            "eventLocation" to (eventMetadata?.let { it.eventLocation.name } ?: ""),
+            "eventLocationUrl" to (eventMetadata?.let { it.eventLocationUrl } ?: ""),
+            "guestEmails" to (eventMetadata?.let { it.guestEmails.toString() } ?: "")
+        )
 
     )
 }
@@ -55,5 +59,11 @@ inline fun Int.toMinutesString(): String {
     val totalMinutes = 24 * 60;
     val hours = this / 60
     val minutes = this % 60
-    return "$hours hr $minutes"
+    return "$hours hrs $minutes mins"
+}
+
+inline fun SlotBookingRequest.validate(event: CalenderEvent) {
+    if ((endTime.time - startTime.time) > event.slotMaxDurationMinutes * 60 * 1000) {
+        throw Exception("Max booking duration for this event us ${event.slotMaxDurationMinutes} mins.")
+    }
 }

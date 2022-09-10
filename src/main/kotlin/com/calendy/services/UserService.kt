@@ -6,6 +6,7 @@ import com.calendy.daos.EventsRepository
 import com.calendy.daos.SlotsRepository
 import com.calendy.daos.UserRepository
 import com.calendy.models.*
+import com.calendy.services.ThirdPartyCalenders.ThirdPartyCalendarManager
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
@@ -22,19 +23,25 @@ class UserService {
 
     @Autowired
     lateinit var slotRepository: SlotsRepository
+
+    @Autowired
+    lateinit var thirdPartyCalendarManager: ThirdPartyCalendarManager
     fun getAllUsers(): List<User> {
         return userRepository.findAll();
     }
 
-    fun getAllEventsForUser(userId: String): List<CalenderEvent> {
+    fun getAllActiveEventsForUser(userId: String): List<CalenderEvent> {
         return eventsRepository.findAllById(listOf(userId)).filter { it.isActive == true }
     }
 
     fun createUserEvent(calenderEventRequest: CalenderEventRequest): String {
         try {
             calenderEventRequest.validate()
-            val event = eventsRepository.save(calenderEventRequest.toCalenderEvent())
-            return event.eventId
+            userRepository.findByIdOrNull(calenderEventRequest.hostUserId)?.let {
+                val event = eventsRepository.save(calenderEventRequest.toCalenderEvent())
+                return event.eventId
+            } ?: throw Exception("No Valid user with id ${calenderEventRequest.hostUserId} found ")
+
         } catch (e: Exception) {
             throw Exception("Unable to create event because: ${e.message}, $e")
         }
@@ -65,8 +72,9 @@ class UserService {
     fun getUserAvailability(userId: String, startOfDay: Date, eventId: String): UserAvailabilityResponse? {
         val user = userRepository.findByIdOrNull(userId)
         user?.let {
-            eventsRepository.findByIdOrNull(eventId)?.let { calenderEvent ->
 
+
+            getAllActiveEventsForUser(userId).filter { it.eventId == eventId }.firstOrNull()?.let { calenderEvent ->
                 if (!calenderEvent.isActive) {
                     return UserAvailabilityResponse(
                         userId = userId,
@@ -79,24 +87,21 @@ class UserService {
                 }
 
                 if (calenderEvent.slotWindowType == SlotWindowType.FIXED_WINDOW) {
-                    if (startOfDay.after(calenderEvent.eventEndDate)) {
-                        return UserAvailabilityResponse(
-                            userId = userId,
-                            eventId = eventId,
-                            startDate = calenderEvent.eventStartDate,
-                            endDate = calenderEvent.eventEndDate,
-                            totalAvailableSlots = 0,
-                            errorMessage = "Event has already Ended on ${calenderEvent.eventEndDate}"
-                        )
+                    val errorMessage = if (startOfDay.time > calenderEvent.eventEndDate!!.time) {
+                        "Event has already Ended on ${calenderEvent.eventEndDate}"
+                    } else if (startOfDay.time < calenderEvent.eventStartDate!!.time) {
+                        "Event has not started, start date : ${calenderEvent.eventStartDate}"
+                    } else {
+                        null
                     }
-                    if (startOfDay.before(calenderEvent.eventStartDate)) {
+                    errorMessage?.let {
                         return UserAvailabilityResponse(
                             userId = userId,
                             eventId = eventId,
                             startDate = calenderEvent.eventStartDate,
                             endDate = calenderEvent.eventEndDate,
                             totalAvailableSlots = 0,
-                            errorMessage = "Event has not started, start date : ${calenderEvent.eventStartDate}"
+                            errorMessage = errorMessage
                         )
                     }
                 }
@@ -142,7 +147,7 @@ class UserService {
 
                 } else {
                     val availibiltitMap = mutableMapOf<String, String>()
-                    for (time in calenderEvent.dailyStartTimeMins..calenderEvent.dailyEndTimeMins step calenderEvent.slotMaxDurationMinutes) {
+                    for (time in calenderEvent.dailyStartTimeMins..(calenderEvent.dailyEndTimeMins - calenderEvent.slotMaxDurationMinutes) step calenderEvent.slotMaxDurationMinutes) {
                         val startTime = time.toMinutesString()
                         val endTime = (time + calenderEvent.slotMaxDurationMinutes).toMinutesString()
                         availibiltitMap[startTime] = endTime
@@ -158,7 +163,10 @@ class UserService {
                 }
 
 
-            } ?: throw Exception("Invalid Event ID")
+            } ?: return UserAvailabilityResponse(
+                userId = userId,
+                errorMessage = "User has no active events"
+            )
         } ?: throw Exception("Invalid User ID")
 
         return null
@@ -173,6 +181,7 @@ class UserService {
     fun bookSlot(request: SlotBookingRequest): String? {
         val event = eventsRepository.findByIdOrNull(request.eventId)
         event?.let {
+            request.validate(it)
             userRepository.findByIdOrNull(event.hostUserId)?.let { hostUser ->
                 userRepository.findByIdOrNull(request.inviteeUserId)?.let { guestUser ->
                     val existingSlots: List<Slot> = slotRepository.findAllById(listOf(request.eventId))
@@ -192,8 +201,19 @@ class UserService {
                              * return lock acquisition failure if lock acq. failes
                              */
 
-                            val slot = request.toSlot()
+                            val eventMetadata = generateEventMetadataForSlotBooking(event)
+                            val slot = request.toSlot(eventMetadata)
                             slotRepository.save(slot)
+                            /**
+                             * Create Sync with third Party Calendars
+                             */
+                            thirdPartyCalendarManager.createMeeting(
+                                slotBookingRequest = request,
+                                guest = guestUser,
+                                host = hostUser,
+                                event = event
+                            )
+
                             return slot.slotId
                         }
                     }
@@ -228,5 +248,14 @@ class UserService {
 
     fun syncThirdPartyCalender(userId: String, accountsToLink: Map<ThirdPartyCalenderType, String>) {
 
+    }
+
+    fun generateEventMetadataForSlotBooking(event: CalenderEvent): EventMetadata {
+
+        return EventMetadata(
+            eventLocation = EventLocation.values().get((System.currentTimeMillis() % 2L).toInt()),
+            eventLocationUrl = "+91 - 9933384625",
+            guestEmails = emptyList()
+        )
     }
 }

@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.util.*
-import javax.websocket.server.PathParam
 
 @RestController
 class UserResource {
@@ -34,7 +33,7 @@ class UserResource {
 
     @GetMapping("/getActiveEventsForUser")
     fun getActiveEventsForUser(@RequestParam @NotNull userId: String): List<CalenderEvent> {
-        return userService.getAllEventsForUser(userId)
+        return userService.getAllActiveEventsForUser(userId)
     }
 
 
@@ -43,12 +42,13 @@ class UserResource {
      */
     @GetMapping("/getUserAvailability")
     fun getUserAvailability(
-        @RequestParam userId: String,
-        @RequestParam startofDay: Date,
-        @RequestParam eventId: String
+        @RequestParam @NotNull userId: String,
+        @RequestParam @NotNull startofDay: Long,
+        @RequestParam @NotNull eventId: String
     ): UserAvailabilityResponse? {
+        val startDayTime = startofDay - (startofDay % (24 * 60 * 60 * 1000L))
         return userService.getUserAvailability(
-            userId, startofDay, eventId
+            userId, Date(startDayTime), eventId
         )
     }
 

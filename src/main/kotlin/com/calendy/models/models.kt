@@ -1,6 +1,8 @@
 package com.calendy.models
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonInclude
 import org.springframework.data.cassandra.core.mapping.Indexed
 import org.springframework.data.cassandra.core.mapping.PrimaryKey
 import org.springframework.data.cassandra.core.mapping.Table
@@ -32,13 +34,13 @@ data class UserMetadata(
     val metadata: Map<String, String>
 )
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 @JsonAutoDetect
 data class CalenderEventRequest(
     val paymentRequired: Boolean,
     val eventName: String? = null,
     val isActive: Boolean = true,
     val hostUserId: String,
-    val eventDetails: EventMetadata,
     val slotWindowType: SlotWindowType,
     val slotDurationMinutes: Int,
     val dailyStartTimeMins: Int,
@@ -72,7 +74,6 @@ data class SlotBookingRequest(
     val inviteeUserId: String,
     val startTime: Date,
     val endTime: Date,
-    val eventMetadata: EventMetadata,
     val paymentMetadata: Map<String, String> = mapOf()
 )
 
@@ -86,10 +87,11 @@ data class Slot(
     val inviteeUserId: String,
     val startTime: Date,
     val endTime: Date,
-    val eventMetadata: EventMetadata
+    val eventMetadata: Map<String, String>
 )
 
 @JsonAutoDetect
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class EventMetadata(
     val eventLocation: EventLocation,
     val eventLocationUrl: String,
@@ -137,10 +139,12 @@ enum class NotificationType {
     SMS, EMAIL, PUSH_NOTIFICATION, CALL
 }
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 @JsonAutoDetect
 data class UserAvailabilityResponse(
     val userId: String,
-    val eventId: String,
+    val eventId: String? = null,
     val startDate: Date? = null,
     val endDate: Date? = null,
     val totalAvailableSlots: Int? = null,
