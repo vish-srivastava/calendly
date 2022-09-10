@@ -46,9 +46,8 @@ class UserResource {
         @RequestParam @NotNull startofDay: Long,
         @RequestParam @NotNull eventId: String
     ): UserAvailabilityResponse? {
-        val startDayTime = startofDay - (startofDay % (24 * 60 * 60 * 1000L))
         return userService.getUserAvailability(
-            userId, Date(startDayTime), eventId
+            userId, Date(startofDay), eventId
         )
     }
 

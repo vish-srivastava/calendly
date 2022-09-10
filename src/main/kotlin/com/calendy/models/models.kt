@@ -53,9 +53,10 @@ data class CalenderEventRequest(
 @JsonAutoDetect
 @Table("event")
 data class CalenderEvent(
-    @PrimaryKey
-    val hostUserId: String,
+
     @Indexed
+    val hostUserId: String,
+    @PrimaryKey
     val eventId: String,
     val isActive: Boolean,
     val paymentRequired: Boolean,
@@ -70,6 +71,7 @@ data class CalenderEvent(
 
 @JsonAutoDetect
 data class SlotBookingRequest(
+    val hostUserId: String,
     val eventId: String,
     val inviteeUserId: String,
     val startTime: Date,
@@ -80,9 +82,9 @@ data class SlotBookingRequest(
 @JsonAutoDetect
 @Table("slot")
 data class Slot(
-    @PrimaryKey
-    val eventId: String,
     @Indexed
+    val eventId: String,
+    @PrimaryKey
     val slotId: String,
     val inviteeUserId: String,
     val startTime: Date,

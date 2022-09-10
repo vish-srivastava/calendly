@@ -31,7 +31,7 @@ class UserService {
     }
 
     fun getAllActiveEventsForUser(userId: String): List<CalenderEvent> {
-        return eventsRepository.findAllById(listOf(userId)).filter { it.isActive == true }
+        return eventsRepository.findAllEventsForHostId(userId).filter { it.isActive == true }
     }
 
     fun createUserEvent(calenderEventRequest: CalenderEventRequest): String {
@@ -71,6 +71,7 @@ class UserService {
      */
     fun getUserAvailability(userId: String, startOfDay: Date, eventId: String): UserAvailabilityResponse? {
         val user = userRepository.findByIdOrNull(userId)
+        val istTimeZoneOffSet = 330
         user?.let {
 
 
@@ -87,13 +88,15 @@ class UserService {
                 }
 
                 if (calenderEvent.slotWindowType == SlotWindowType.FIXED_WINDOW) {
-                    val errorMessage = if (startOfDay.time > calenderEvent.eventEndDate!!.time) {
-                        "Event has already Ended on ${calenderEvent.eventEndDate}"
-                    } else if (startOfDay.time < calenderEvent.eventStartDate!!.time) {
-                        "Event has not started, start date : ${calenderEvent.eventStartDate}"
-                    } else {
-                        null
-                    }
+                    val errorMessage =
+                        if (startOfDay.time > (calenderEvent.eventEndDate!!.time - calenderEvent.slotMaxDurationMinutes * 60 * 1000L)
+                        ) {
+                            "Event has already Ended on ${calenderEvent.eventEndDate}"
+                        } else if (startOfDay.time < calenderEvent.eventStartDate!!.time) {
+                            "Event has not started, start date : ${calenderEvent.eventStartDate}"
+                        } else {
+                            null
+                        }
                     errorMessage?.let {
                         return UserAvailabilityResponse(
                             userId = userId,
@@ -106,33 +109,43 @@ class UserService {
                     }
                 }
 
-                val bookedSlots: List<Slot> = slotRepository.findAllById(listOf(eventId))
+                val bookedSlots: List<Slot> = slotRepository.findSlotsForEventId(eventId)
                 val filteredSlots: List<Slot> =
-                    bookedSlots.filter { it.startTime.time >= startOfDay.time && it.endTime.time <= (startOfDay.time + 24 * 60L) }
+                    bookedSlots.filter { it.startTime.time >= startOfDay.time && it.endTime.time <= (startOfDay.time + calenderEvent.dailyEndTimeMins * 60 * 1000L) }
                         .sortedBy {
                             it.startTime
                         }
                 var index = 0
                 if (filteredSlots.isNotEmpty()) {
+                    
                     val availibiltitMap = mutableMapOf<String, String>()
                     val unavailibiltitMap = mutableMapOf<String, String>()
-
                     val startTime = startOfDay.time + (calenderEvent.dailyStartTimeMins * 60 * 1000L)
                     val endTime = startOfDay.time + (calenderEvent.dailyEndTimeMins * 60 * 1000L)
 
-                    for (slotTime in startTime..endTime step calenderEvent.slotMaxDurationMinutes * 60 * 1000L) {
+                    for (slotTime in startTime..(endTime - calenderEvent.slotMaxDurationMinutes) step calenderEvent.slotMaxDurationMinutes * 60 * 1000L) {
                         if (index < filteredSlots.size
                             && filteredSlots.get(index).startTime.time >= slotTime
                             && filteredSlots.get(index).startTime.time <= (slotTime + calenderEvent.slotMaxDurationMinutes * 60 * 1000L)
                         ) {
                             val startMinutes = slotTime / (60 * 1000L) % (24 * 60)
                             val endMinutes = startMinutes.toInt() + calenderEvent.slotMaxDurationMinutes
-                            unavailibiltitMap[startMinutes.toInt().toMinutesString()] = endMinutes.toString()
+                            unavailibiltitMap[startMinutes.plus(istTimeZoneOffSet).toInt().toMinutesString()] =
+                                endMinutes.plus(istTimeZoneOffSet).toMinutesString()
+                            index++
                         } else {
                             val startMinutes = slotTime / (60 * 1000L) % (24 * 60)
                             val endMinutes = startMinutes.toInt() + calenderEvent.slotMaxDurationMinutes
-                            availibiltitMap[startMinutes.toString()] = endMinutes.toString()
+                            val include =
+                                calenderEvent.eventEndDate?.let { (startOfDay.time + (endMinutes * 60 * 1000L)) <= calenderEvent.eventEndDate.time }
+                                    ?: true
+
+                            if (include) {
+                                availibiltitMap[startMinutes.plus(istTimeZoneOffSet).toInt().toMinutesString()] =
+                                    endMinutes.plus(istTimeZoneOffSet).toInt().toMinutesString()
+                            }
                         }
+
                     }
 
                     return UserAvailabilityResponse(
@@ -148,9 +161,18 @@ class UserService {
                 } else {
                     val availibiltitMap = mutableMapOf<String, String>()
                     for (time in calenderEvent.dailyStartTimeMins..(calenderEvent.dailyEndTimeMins - calenderEvent.slotMaxDurationMinutes) step calenderEvent.slotMaxDurationMinutes) {
-                        val startTime = time.toMinutesString()
-                        val endTime = (time + calenderEvent.slotMaxDurationMinutes).toMinutesString()
-                        availibiltitMap[startTime] = endTime
+                        val startTime = time
+                        val endTime = (time + calenderEvent.slotMaxDurationMinutes)
+                        val include =
+                            calenderEvent.eventEndDate?.let { (startOfDay.time + (endTime * 60 * 1000L)) <= calenderEvent.eventEndDate.time }
+                                ?: true
+
+                        if (include) {
+                            availibiltitMap[startTime.plus(istTimeZoneOffSet).toMinutesString()] =
+                                endTime.plus(istTimeZoneOffSet).toMinutesString()
+                        } else {
+                            break
+                        }
                     }
                     return UserAvailabilityResponse(
                         userId = userId,
@@ -179,44 +201,50 @@ class UserService {
      * get event detail
      */
     fun bookSlot(request: SlotBookingRequest): String? {
-        val event = eventsRepository.findByIdOrNull(request.eventId)
+        val event = eventsRepository.findAllEventsForHostId(request.hostUserId).filter { it.eventId == request.eventId }
+            .firstOrNull()
         event?.let {
             request.validate(it)
             userRepository.findByIdOrNull(event.hostUserId)?.let { hostUser ->
                 userRepository.findByIdOrNull(request.inviteeUserId)?.let { guestUser ->
-                    val existingSlots: List<Slot> = slotRepository.findAllById(listOf(request.eventId))
-                    if (existingSlots.isNotEmpty()) {
-                        val collidingSlots = existingSlots.filter {
-                            request.startTime.after(Date(it.startTime.time - 60 * 1000L)) && request.startTime.before(
-                                it.endTime
-                            )
-                        }.toList()
 
-                        if (collidingSlots.isNotEmpty()) {
-                            throw Exception("This Slot is not available")
-                        } else {
-
-                            /**
-                             * To handle Concurrent Requests , acquire a lock on eventId-startTime based key,
-                             * return lock acquisition failure if lock acq. failes
-                             */
-
-                            val eventMetadata = generateEventMetadataForSlotBooking(event)
-                            val slot = request.toSlot(eventMetadata)
-                            slotRepository.save(slot)
-                            /**
-                             * Create Sync with third Party Calendars
-                             */
-                            thirdPartyCalendarManager.createMeeting(
-                                slotBookingRequest = request,
-                                guest = guestUser,
-                                host = hostUser,
-                                event = event
-                            )
-
-                            return slot.slotId
-                        }
+                    if (hostUser.userId.equals(guestUser.userId, ignoreCase = true)) {
+                        throw Exception("Guest and host can't be the same")
                     }
+
+                    val existingSlots: List<Slot> = slotRepository.findSlotsForEventId(request.eventId)
+
+                    val collidingSlots = existingSlots.filter {
+                        request.startTime.after(Date(it.startTime.time - 60 * 1000L)) && request.startTime.before(
+                            it.endTime
+                        )
+                    }.toList()
+
+                    if (collidingSlots.isNotEmpty()) {
+                        throw Exception("This Slot is not available")
+                    } else {
+
+                        /**
+                         * To handle Concurrent Requests , acquire a lock on eventId-startTime based hash/key,
+                         * return lock acquisition failure if lock acq. failes
+                         */
+
+                        val eventMetadata = generateEventMetadataForSlotBooking(event)
+                        val slot = request.toSlot(eventMetadata)
+                        slotRepository.save(slot)
+                        /**
+                         * Create Sync with third Party Calendars
+                         */
+                        thirdPartyCalendarManager.createMeeting(
+                            slotBookingRequest = request,
+                            guest = guestUser,
+                            host = hostUser,
+                            event = event
+                        )
+
+                        return slot.slotId
+                    }
+
                 } ?: throw Exception("Guest user does not exist")
             } ?: throw Exception("Host user is not active anymore")
 
