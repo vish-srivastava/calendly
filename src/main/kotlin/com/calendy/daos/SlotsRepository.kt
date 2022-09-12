@@ -11,4 +11,10 @@ interface SlotsRepository : CassandraRepository<Slot, String> {
 
     @Query("select * from slot where eventid =:eventId")
     fun findSlotsForEventId(@Param("eventId") eventId: String): List<Slot>
+
+    @Query("select * from slot where hostuserid=:userId ALLOW FILTERING")
+    fun findSlotsForHostUserId(@Param("userId") userId: String): List<Slot>
+
+    @Query("select * from slot where inviteeuserid=:userId ALLOW FILTERING")
+    fun findSlotsForGuestUserId(@Param("userId") userId: String): List<Slot>
 }

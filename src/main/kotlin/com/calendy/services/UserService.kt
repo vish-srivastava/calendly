@@ -14,6 +14,10 @@ import java.util.*
 
 @Service
 class UserService {
+    companion object {
+        const val ONE_DAY_MILLIS = 24 * 60 * 60 * 1000L
+        const val IST_OFFSET_MILLIS = 330 * 60 * 1000L
+    }
 
     @Autowired
     lateinit var userRepository: UserRepository
@@ -27,11 +31,11 @@ class UserService {
     @Autowired
     lateinit var thirdPartyCalendarManager: ThirdPartyCalendarManager
     fun getAllUsers(): List<User> {
-        return userRepository.findAll();
+        return userRepository.findAll()
     }
 
     fun getAllActiveEventsForUser(userId: String): List<CalenderEvent> {
-        return eventsRepository.findAllEventsForHostId(userId).filter { it.isActive == true }
+        return eventsRepository.findAllEventsForHostId(userId).filter { it.isActive }
     }
 
     fun createUserEvent(calenderEventRequest: CalenderEventRequest): String {
@@ -61,20 +65,118 @@ class UserService {
             )
             return user.userId
         } catch (e: Exception) {
-            throw Exception("unable to create user as ${e.message}, ${e.toString()}")
+            throw Exception("unable to create user as ${e.message}, $e")
         }
     }
 
+    fun getUserAvailabilities(userId: String, startOfDay: Date, eventId: String?): List<UserAvailabilityResponse> {
+        userRepository.findByIdOrNull(userId)?.let {
+            val allActiveSlotsAsHost = slotRepository.findSlotsForHostUserId(userId)
+            val allActiveSlotsAsGuest = slotRepository.findSlotsForGuestUserId(userId)
+            val allActiveSlotsForUser = allActiveSlotsAsHost.union(allActiveSlotsAsGuest).toSet()
+            val activeEventsForUser = eventsRepository.findAllEventsForHostId(userId).toMutableList()
+            if (!activeEventsForUser.isEmpty()) {
+                val possibleConflictingSlotsForUser = allActiveSlotsForUser.filter {
+                    it.startTime >= startOfDay && it.endTime <= (Date(startOfDay.time.plus(ONE_DAY_MILLIS)))
+                }
+                val eventsToCheckAvailability = eventId?.let {
+                    activeEventsForUser.filter { it.eventId == eventId }
+                } ?: activeEventsForUser
+
+                if (eventsToCheckAvailability.isNotEmpty()) {
+                    /**
+                     * Optimization : Below functionality can be parallelised using CoRoutines and processed independently
+                     */
+                    val userAvailabilityResponses: List<UserAvailabilityResponse> =
+                        eventsToCheckAvailability.map { calenderEvent ->
+
+                            val errorMessage = if (calenderEvent.slotWindowType == SlotWindowType.FIXED_WINDOW) {
+                                if (startOfDay.time > (calenderEvent.eventEndDate!!.time - calenderEvent.slotMaxDurationMinutes * 60 * 1000L)
+                                ) {
+                                    "Event has already Ended on ${calenderEvent.eventEndDate}"
+                                } else if (startOfDay.time < calenderEvent.eventStartDate!!.time) {
+                                    "Event has not started, start date : ${calenderEvent.eventStartDate}"
+                                } else {
+                                    null
+                                }
+                            } else null
+
+                            if (errorMessage != null) {
+                                UserAvailabilityResponse(
+                                    userId = userId,
+                                    eventId = calenderEvent.eventId,
+                                    errorMessage = errorMessage
+                                )
+                            } else {
+                                val startTime = startOfDay.time + (calenderEvent.dailyStartTimeMins * 60 * 1000L)
+                                val endTime = startOfDay.time + (calenderEvent.dailyEndTimeMins * 60 * 1000L)
+
+
+                                val availableSlots = mutableListOf<Interval>()
+                                val unavailableSlots = mutableListOf<Interval>()
+                                for (slotTime in startTime..(endTime - calenderEvent.slotMaxDurationMinutes) step calenderEvent.slotMaxDurationMinutes * 60 * 1000L) {
+                                    val slotInterval = Interval(
+                                        startTime = Date(slotTime).toLocalDateTime(),
+                                        endTime = Date(slotTime + (calenderEvent.slotMaxDurationMinutes * 60 * 1000L)).toLocalDateTime()
+                                    )
+                                    if (!isIntervalConflictingWithSlots(
+                                            slotInterval,
+                                            possibleConflictingSlotsForUser
+                                        )
+                                    ) {
+                                        availableSlots.add(slotInterval)
+                                    } else {
+                                        unavailableSlots.add(slotInterval)
+                                    }
+                                }
+                                UserAvailabilityResponse(
+                                    userId = userId,
+                                    eventId = calenderEvent.eventId,
+                                    totalAvailableSlots = availableSlots.size,
+                                    availabileSlots = availableSlots,
+                                    unavailableSlots = unavailableSlots
+                                )
+                            }
+                        }.toList()
+
+                    return userAvailabilityResponses
+
+                } else {
+                    return listOf(
+                        UserAvailabilityResponse(
+                            errorMessage = "User doesn't have any active events",
+                            userId = userId,
+                            eventId = eventId
+                        )
+                    )
+                }
+            } else {
+                return listOf(
+                    UserAvailabilityResponse(
+                        errorMessage = "User doesn't have any active events",
+                        userId = userId,
+                        eventId = eventId
+                    )
+                )
+            }
+        } ?: return listOf(
+            UserAvailabilityResponse(
+                errorMessage = "User doesn't exist",
+                userId = userId,
+                eventId = eventId
+            )
+        )
+
+    }
 
     /**
-     * Given a fixed Day -> return the availability for that day
+     * Ignore:  Unused
      */
-    fun getUserAvailability(userId: String, startOfDay: Date, eventId: String): UserAvailabilityResponse? {
+    @SuppressWarnings("unused")
+    fun getUserAvailability(userId: String, startOfDay: Date, eventId: String?): UserAvailabilityResponse? {
         val user = userRepository.findByIdOrNull(userId)
         val istTimeZoneOffSet = 330
         user?.let {
-
-
             getAllActiveEventsForUser(userId).filter { it.eventId == eventId }.firstOrNull()?.let { calenderEvent ->
                 if (!calenderEvent.isActive) {
                     return UserAvailabilityResponse(
@@ -109,7 +211,7 @@ class UserService {
                     }
                 }
 
-                val bookedSlots: List<Slot> = slotRepository.findSlotsForEventId(eventId)
+                val bookedSlots: List<Slot> = slotRepository.findSlotsForEventId(eventId!!)
                 val filteredSlots: List<Slot> =
                     bookedSlots.filter { it.startTime.time >= startOfDay.time && it.endTime.time <= (startOfDay.time + calenderEvent.dailyEndTimeMins * 60 * 1000L) }
                         .sortedBy {
@@ -117,7 +219,7 @@ class UserService {
                         }
                 var index = 0
                 if (filteredSlots.isNotEmpty()) {
-                    
+
                     val availibiltitMap = mutableMapOf<String, String>()
                     val unavailibiltitMap = mutableMapOf<String, String>()
                     val startTime = startOfDay.time + (calenderEvent.dailyStartTimeMins * 60 * 1000L)
@@ -142,7 +244,7 @@ class UserService {
 
                             if (include) {
                                 availibiltitMap[startMinutes.plus(istTimeZoneOffSet).toInt().toMinutesString()] =
-                                    endMinutes.plus(istTimeZoneOffSet).toInt().toMinutesString()
+                                    endMinutes.plus(istTimeZoneOffSet).toMinutesString()
                             }
                         }
 
@@ -154,21 +256,20 @@ class UserService {
                         startDate = calenderEvent.eventStartDate,
                         endDate = calenderEvent.eventEndDate,
                         totalAvailableSlots = availibiltitMap.size,
-                        availabilityMap = availibiltitMap,
-                        unavailabilityMap = unavailibiltitMap
+                        availabileSlots = emptyList(),
+                        unavailableSlots = emptyList()
                     )
 
                 } else {
                     val availibiltitMap = mutableMapOf<String, String>()
                     for (time in calenderEvent.dailyStartTimeMins..(calenderEvent.dailyEndTimeMins - calenderEvent.slotMaxDurationMinutes) step calenderEvent.slotMaxDurationMinutes) {
-                        val startTime = time
                         val endTime = (time + calenderEvent.slotMaxDurationMinutes)
                         val include =
                             calenderEvent.eventEndDate?.let { (startOfDay.time + (endTime * 60 * 1000L)) <= calenderEvent.eventEndDate.time }
                                 ?: true
 
                         if (include) {
-                            availibiltitMap[startTime.plus(istTimeZoneOffSet).toMinutesString()] =
+                            availibiltitMap[time.plus(istTimeZoneOffSet).toMinutesString()] =
                                 endTime.plus(istTimeZoneOffSet).toMinutesString()
                         } else {
                             break
@@ -180,7 +281,7 @@ class UserService {
                         startDate = calenderEvent.eventStartDate,
                         endDate = calenderEvent.eventEndDate,
                         totalAvailableSlots = availibiltitMap.size,
-                        availabilityMap = availibiltitMap
+                        availabileSlots = emptyList()
                     )
                 }
 
@@ -191,7 +292,6 @@ class UserService {
             )
         } ?: throw Exception("Invalid User ID")
 
-        return null
 
     }
 
@@ -199,8 +299,17 @@ class UserService {
     /**
      * Validate request
      * get event detail
+     *
+     * Logic :
+     * 1.Get Active User Events for requested Event
+     * 2.Get All Other events - excluding the current events
+     * 3.Get All slots for events in #2
+     * 4.Check slot collisions between requested slot in #1 na all slots in #3
+     * 4.
      */
-    fun bookSlot(request: SlotBookingRequest): String? {
+    fun bookSlot(request: SlotBookingRequest): SlotBookingResponse {
+
+        val slotBookingResponse = SlotBookingResponse(request.hostUserId, request.eventId, request.inviteeUserId)
         val event = eventsRepository.findAllEventsForHostId(request.hostUserId).filter { it.eventId == request.eventId }
             .firstOrNull()
         event?.let {
@@ -209,53 +318,65 @@ class UserService {
                 userRepository.findByIdOrNull(request.inviteeUserId)?.let { guestUser ->
 
                     if (hostUser.userId.equals(guestUser.userId, ignoreCase = true)) {
-                        throw Exception("Guest and host can't be the same")
+                        return slotBookingResponse.copy(errorMessage = "Guest and host can't be the same")
                     }
 
-                    val existingSlots: List<Slot> = slotRepository.findSlotsForEventId(request.eventId)
+                    val startOfDay =
+                        Date(request.startTime.time - request.startTime.time % ONE_DAY_MILLIS - IST_OFFSET_MILLIS)
+                    val requestedInterval =
+                        Interval(request.startTime.toLocalDateTime(), request.endTime.toLocalDateTime())
 
-                    val collidingSlots = existingSlots.filter {
-                        request.startTime.after(Date(it.startTime.time - 60 * 1000L)) && request.startTime.before(
-                            it.endTime
+                    // get and check host's availability for all of his events
+                    val userAvailabilityForHost =
+                        getUserAvailabilities(hostUser.userId, startOfDay, null).filter { response ->
+                            response.eventId == event.eventId
+                        }
+
+                    // get and also check host's availability for all of his events
+                    val userAvailabilityForGuest =
+                        getUserAvailabilities(guestUser.userId, startOfDay, null).filter { response ->
+                            response.eventId == event.eventId
+                        }
+
+                    // IF either of their calender events collide with request slot booking time, fail booking
+
+                    if (checkTimeIntervalConflictForUserAvailability(
+                            requestedInterval,
+                            userAvailabilityForGuest
+                        ) || checkTimeIntervalConflictForUserAvailability(
+                            requestedInterval, userAvailabilityForHost
                         )
-                    }.toList()
+                    ) {
 
-                    if (collidingSlots.isNotEmpty()) {
-                        throw Exception("This Slot is not available")
-                    } else {
-
-                        /**
-                         * To handle Concurrent Requests , acquire a lock on eventId-startTime based hash/key,
-                         * return lock acquisition failure if lock acq. failes
-                         */
-
-                        val eventMetadata = generateEventMetadataForSlotBooking(event)
-                        val slot = request.toSlot(eventMetadata)
-                        slotRepository.save(slot)
-                        /**
-                         * Create Sync with third Party Calendars
-                         */
-                        thirdPartyCalendarManager.createMeeting(
-                            slotBookingRequest = request,
-                            guest = guestUser,
-                            host = hostUser,
-                            event = event
-                        )
-
-                        return slot.slotId
+                        return slotBookingResponse.copy(errorMessage = "The requested Slot is unavailable/colliding with existing event")
                     }
+                    /**
+                     * To handle Concurrent Requests , acquire a lock on eventId-startTime based hash/key,
+                     * return lock acquisition failure if lock acq. fails
+                     */
 
-                } ?: throw Exception("Guest user does not exist")
-            } ?: throw Exception("Host user is not active anymore")
+                    val eventMetadata = generateEventMetadataForSlotBooking(event)
+                    val slot = request.toSlot(eventMetadata)
+                    slotRepository.save(slot)
+                    /**
+                     * Create Sync with third Party Calendars
+                     */
+                    thirdPartyCalendarManager.createMeeting(
+                        slotBookingRequest = request,
+                        guest = guestUser,
+                        host = hostUser,
+                        event = event
+                    )
+                    return slotBookingResponse.copy(slotId = slot.slotId)
 
-
-        } ?: throw Exception("No Event with id ${request.eventId} found")
-
-        return null
+                } ?: return slotBookingResponse.copy(errorMessage = "Guest user does not exist")
+            } ?: return slotBookingResponse.copy(errorMessage = "Host user is not active anymore")
+        } ?: return slotBookingResponse.copy(errorMessage = "No Event with id ${request.eventId} found")
     }
 
+
     fun deleteEvent(userId: String, eventId: String) {
-        userRepository.findByIdOrNull(userId)?.let { user ->
+        userRepository.findByIdOrNull(userId)?.let {
             eventsRepository.findByIdOrNull(eventId)?.let { calenderEvent ->
                 if (!calenderEvent.hostUserId.equals(userId, ignoreCase = true)) {
                     throw Exception("Request User with id $userId is not authorized for this operation")
@@ -270,20 +391,54 @@ class UserService {
         } ?: throw Exception("Invalid user")
     }
 
+
+    // TODO
     fun updateUserAvailability(userId: String) {
 
     }
 
+    fun isIntervalConflictingWithSlots(interval: Interval, slots: List<Slot>): Boolean {
+        slots.map { slot ->
+            val slotInterval = Interval(
+                startTime = slot.startTime.toLocalDateTime(),
+                endTime = slot.endTime.toLocalDateTime()
+            )
+
+            if (interval.areIntervalsConflicting(slotInterval)) {
+                return true
+            }
+        }
+        return false
+    }
+
+    //TODO
     fun syncThirdPartyCalender(userId: String, accountsToLink: Map<ThirdPartyCalenderType, String>) {
 
+    }
+
+    fun checkTimeIntervalConflictForUserAvailability(
+        interval: Interval,
+        userAvailabilityResponses: List<UserAvailabilityResponse>
+    ): Boolean {
+        userAvailabilityResponses.map { userAvailability ->
+            userAvailability.unavailableSlots.map { unavailableSlot ->
+                if (interval.areIntervalsConflicting(unavailableSlot)) {
+                    return true
+                }
+            }
+        }
+
+        return false
     }
 
     fun generateEventMetadataForSlotBooking(event: CalenderEvent): EventMetadata {
 
         return EventMetadata(
-            eventLocation = EventLocation.values().get((System.currentTimeMillis() % 2L).toInt()),
-            eventLocationUrl = "+91 - 9933384625",
+            eventLocation = EventLocation.values().get((System.currentTimeMillis() % 4L).toInt()),
+            eventLocationUrl = "+91 - 1234567789",
             guestEmails = emptyList()
         )
     }
+
+
 }

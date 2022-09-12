@@ -44,9 +44,9 @@ class UserResource {
     fun getUserAvailability(
         @RequestParam @NotNull userId: String,
         @RequestParam @NotNull startofDay: Long,
-        @RequestParam @NotNull eventId: String
-    ): UserAvailabilityResponse? {
-        return userService.getUserAvailability(
+        @RequestParam eventId: String? = null
+    ): List<UserAvailabilityResponse> {
+        return userService.getUserAvailabilities(
             userId, Date(startofDay), eventId
         )
     }
@@ -66,7 +66,7 @@ class UserResource {
     }
 
     @PostMapping("requestSlotBooking")
-    fun requestSlotBooking(@RequestBody request: SlotBookingRequest): String? {
+    fun requestSlotBooking(@RequestBody request: SlotBookingRequest): SlotBookingResponse {
         return userService.bookSlot(request)
     }
 
@@ -82,8 +82,8 @@ class UserResource {
     }
 
     @PostMapping("/deleteEvent")
-    fun deleteEvent() {
-
+    fun deleteEvent(userId: String, eventId: String) {
+        userService.deleteEvent(userId, eventId)
     }
 
 

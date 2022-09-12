@@ -1,11 +1,13 @@
 package com.calendy.models
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect
+import com.fasterxml.jackson.annotation.JsonFormat
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 import org.springframework.data.cassandra.core.mapping.Indexed
 import org.springframework.data.cassandra.core.mapping.PrimaryKey
 import org.springframework.data.cassandra.core.mapping.Table
+import java.time.LocalDateTime
 import java.util.*
 
 
@@ -79,6 +81,17 @@ data class SlotBookingRequest(
     val paymentMetadata: Map<String, String> = mapOf()
 )
 
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonAutoDetect
+data class SlotBookingResponse(
+    val hostUserId: String,
+    val eventId: String,
+    val inviteeUserId: String,
+    val slotId: String? = null,
+    val errorMessage: String? = null
+)
+
 @JsonAutoDetect
 @Table("slot")
 data class Slot(
@@ -87,6 +100,7 @@ data class Slot(
     @PrimaryKey
     val slotId: String,
     val inviteeUserId: String,
+    val hostUserId: String,
     val startTime: Date,
     val endTime: Date,
     val eventMetadata: Map<String, String>
@@ -150,7 +164,18 @@ data class UserAvailabilityResponse(
     val startDate: Date? = null,
     val endDate: Date? = null,
     val totalAvailableSlots: Int? = null,
-    val availabilityMap: Map<String, String> = emptyMap(),
-    val unavailabilityMap: Map<String, String> = emptyMap(),
+    val availabileSlots: List<Interval> = emptyList(),
+    val unavailableSlots: List<Interval> = emptyList(),
     val errorMessage: String? = null
+)
+
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonAutoDetect
+data class Interval(
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    val startTime: LocalDateTime,
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    val endTime: LocalDateTime
 )

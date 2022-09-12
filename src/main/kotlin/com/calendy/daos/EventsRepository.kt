@@ -10,6 +10,6 @@ import java.util.*
 @Repository
 interface EventsRepository : CassandraRepository<CalenderEvent, String> {
 
-    @Query("select * from event where hostuserid=:userId")
+    @Query("select * from event where hostuserid=:userId ALLOW FILTERING")
     fun findAllEventsForHostId(@Param("userId") userId: String): List<CalenderEvent>
 }
