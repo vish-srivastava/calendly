@@ -30,6 +30,39 @@ class UserService {
 
     @Autowired
     lateinit var thirdPartyCalendarManager: ThirdPartyCalendarManager
+
+
+    /**
+     * User Registration
+     */
+    fun createUser(createUserRequest: CreateUserRequest): CreateUserResponse {
+        val userCreationResponse = CreateUserResponse(
+            isSuccessful = false,
+            name = createUserRequest.name,
+            email = createUserRequest.email,
+            phone = createUserRequest.phone
+        )
+        try {
+            val alreadyRegisteredEmails = userRepository.findAll().map { it.email }
+            if (!createUserRequest.validateUserCreationRequest(alreadyRegisteredEmails.toSet())) {
+                return userCreationResponse.copy(errorMessage = "Email already Registered")
+            }
+            val user = userRepository.save(
+                User(
+                    userId = "USER" + UUID.randomUUID(),
+                    email = createUserRequest.email,
+                    linkedThirdPartyCalenders = createUserRequest.accountsToLink,
+                    name = createUserRequest.name,
+                    phone = createUserRequest.phone,
+                )
+            )
+            return userCreationResponse.copy(userId = user.userId, isSuccessful = true)
+        } catch (e: Exception) {
+            println("unable to create user as ${e.message}, $e")
+            return userCreationResponse.copy(errorMessage = "unable to create user as ${e.message}")
+        }
+    }
+
     fun getAllUsers(): List<User> {
         return userRepository.findAll()
     }
@@ -51,36 +84,29 @@ class UserService {
         }
     }
 
-    fun createUser(createUserRequest: CreateUserRequest): String {
-        try {
-            createUserRequest.validateUserCreationRequest()
-            val user = userRepository.save(
-                User(
-                    userId = "USER" + UUID.randomUUID(),
-                    email = createUserRequest.email,
-                    linkedThirdPartyCalenders = createUserRequest.accountsToLink,
-                    name = createUserRequest.name,
-                    phone = createUserRequest.phone,
-                )
-            )
-            return user.userId
-        } catch (e: Exception) {
-            throw Exception("unable to create user as ${e.message}, $e")
-        }
-    }
 
     fun getUserAvailabilities(userId: String, startOfDay: Date, eventId: String?): List<UserAvailabilityResponse> {
         userRepository.findByIdOrNull(userId)?.let {
             val allActiveSlotsAsHost = slotRepository.findSlotsForHostUserId(userId)
             val allActiveSlotsAsGuest = slotRepository.findSlotsForGuestUserId(userId)
             val allActiveSlotsForUser = allActiveSlotsAsHost.union(allActiveSlotsAsGuest).toSet()
-            val activeEventsForUser = eventsRepository.findAllEventsForHostId(userId).toMutableList()
+            val activeEventsForUser =
+                eventsRepository.findAllEventsForHostId(userId).filter { it.isActive }.toMutableList()
             if (!activeEventsForUser.isEmpty()) {
                 val possibleConflictingSlotsForUser = allActiveSlotsForUser.filter {
                     it.startTime >= startOfDay && it.endTime <= (Date(startOfDay.time.plus(ONE_DAY_MILLIS)))
                 }
                 val eventsToCheckAvailability = eventId?.let {
-                    activeEventsForUser.filter { it.eventId == eventId }
+                    val filteredEvents = activeEventsForUser.filter { it.eventId == eventId }
+                    if (filteredEvents.isEmpty()) {
+                        return listOf(
+                            UserAvailabilityResponse(
+                                userId = userId,
+                                eventId = eventId,
+                                errorMessage = "Event with id $eventId is not active anymore"
+                            )
+                        )
+                    } else filteredEvents
                 } ?: activeEventsForUser
 
                 if (eventsToCheckAvailability.isNotEmpty()) {

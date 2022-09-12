@@ -6,13 +6,19 @@ import java.time.ZoneId
 import java.util.*
 
 
-inline fun CreateUserRequest.validateUserCreationRequest() {
+inline fun CreateUserRequest.validateUserCreationRequest(exisitngUserEmails: Set<String>): Boolean {
+
+    if (exisitngUserEmails.contains(this.email)) {
+        return false
+    }
     // some validations based on email
 //    val existingUsersForSameEmail = listOf("vishal.srivastava@gmail.com")
 ////        userRepository.findByUserEmails(listOf(this.email))
 //    if (existingUsersForSameEmail.isNotEmpty()) {
 //        throw Exception("User email already exists")
 //    }
+
+    return true
 }
 
 inline fun CalenderEventRequest.validate() {
@@ -73,7 +79,7 @@ inline fun SlotBookingRequest.validate(event: CalenderEvent) {
 inline fun Interval.areIntervalsConflicting(interval2: Interval): Boolean {
     if ((this.startTime > interval2.startTime && this.startTime <= interval2.endTime)
         || (interval2.startTime > this.startTime && interval2.startTime <= this.startTime)
-        || (interval2.startTime> this.startTime && interval2.startTime<=this.endTime)
+        || (interval2.startTime > this.startTime && interval2.startTime <= this.endTime)
 
     ) {
         return true

@@ -179,3 +179,16 @@ data class Interval(
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     val endTime: LocalDateTime
 )
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonAutoDetect
+data class CreateUserResponse(
+    val isSuccessful: Boolean,
+    val userId: String? = null,
+    val name: String,
+    val email: String,
+    val phone: String,
+    val errorMessage: String? = null
+
+)
