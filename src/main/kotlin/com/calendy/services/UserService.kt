@@ -1,6 +1,5 @@
 package com.calendy.services
 
-
 import com.calendy.common.*
 import com.calendy.daos.EventsRepository
 import com.calendy.daos.SlotsRepository
@@ -30,7 +29,6 @@ class UserService {
 
     @Autowired
     lateinit var thirdPartyCalendarManager: ThirdPartyCalendarManager
-
 
     /**
      * User Registration
