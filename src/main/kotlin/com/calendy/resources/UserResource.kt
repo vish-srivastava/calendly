@@ -1,5 +1,6 @@
 package com.calendy.resources
 
+import com.calendy.common.getStartOfTheDay
 import com.calendy.common.toLocalDateTime
 import com.calendy.models.*
 import com.calendy.services.UserService
@@ -47,8 +48,9 @@ class UserResource {
         @RequestParam @NotNull startofDay: Long,
         @RequestParam eventId: String? = null
     ): List<UserAvailabilityResponse> {
+        val startDate = Date(startofDay).getStartOfTheDay()
         return userService.getUserAvailabilities(
-            userId, Date(startofDay), eventId
+            userId, startDate, eventId
         )
     }
 
@@ -70,6 +72,17 @@ class UserResource {
     ) {
         userService.deleteEvent(userId, eventId)
     }
+
+    @PostMapping("/deleteSlot")
+    fun deleteSlot(
+        @RequestParam @NotNull slotId: String,
+        @RequestParam @NotNull hostUserId: String
+    ) {
+        userService.deleteSlot(slotId, hostUserId)
+    }
+
+
+    // API to notify guest on user's unavailability
 
 
 }

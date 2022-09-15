@@ -2,6 +2,7 @@ package com.calendy.common
 
 import com.calendy.models.*
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.ZoneId
 import java.util.*
 
@@ -89,4 +90,15 @@ inline fun Interval.areIntervalsConflicting(interval2: Interval): Boolean {
 
 inline fun Date.toLocalDateTime(): LocalDateTime {
     return LocalDateTime.ofInstant(this.toInstant(), ZoneId.of("Asia/Kolkata"))
+}
+
+inline fun Date.getStartOfTheDay(): Date {
+    val localDateTime = this.toLocalDateTime()
+    val startOfDay = localDateTime.with(LocalTime.MIN);
+    return localDateTimeToDate(startOfDay);
+
+}
+
+inline fun Date.localDateTimeToDate(localDateTime: LocalDateTime): Date {
+    return Date.from(localDateTime.atZone(ZoneId.systemDefault()).toInstant());
 }

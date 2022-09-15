@@ -464,5 +464,17 @@ class UserService {
         )
     }
 
+    fun deleteSlot(slotId: String, userId: String): Boolean {
+        slotRepository.findByIdOrNull(slotId)?.let { slot ->
+            if (slot.hostUserId != userId) {
+                return false
+            } else {
+                slotRepository.delete(slot)
+                return true
+            }
+
+        } ?: return false
+    }
+
 
 }
